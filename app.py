@@ -1,83 +1,98 @@
-# app.py
 import streamlit as st
 import pandas as pd
+import numpy as np
 import pickle
-import plotly.express as px
 
-# ----------------------------
-# Page configuration
-# ----------------------------
-st.set_page_config(
-    page_title="🌾 Crop Yield Predictor",
-    page_icon="🌱",
-    layout="wide"
-)
+# -----------------------------------
+# Page Configuration
+# -----------------------------------
+st.set_page_config(page_title="Crop Yield Prediction", layout="wide")
 
 st.title("🌾 Crop Yield Prediction Dashboard")
-st.subheader("🌱 Predict crop yield based on soil and environmental conditions")
+st.markdown("Predict crop yield based on soil & environmental conditions")
 
-# ----------------------------
-# Load model and columns
-# ----------------------------
-with open("crop_model.pkl", "rb") as f:
-    model = pickle.load(f)
+# -----------------------------------
+# Load Model & Column Names FIRST
+# -----------------------------------
+model = pickle.load(open("crop_model.pkl", "rb"))
+model_columns = pickle.load(open("model_columns.pkl", "rb"))
 
-with open("model_columns.pkl", "rb") as f:
-    model_columns = pickle.load(f)
+# -----------------------------------
+# Sidebar Inputs
+# -----------------------------------
+st.sidebar.header("📝 Input Parameters")
 
-# ----------------------------
-# Sidebar: User inputs
-# ----------------------------
-st.sidebar.header("Input Parameters")
+states = [
+    "Maharashtra",
+    "Karnataka",
+    "Tamil Nadu",
+    "Punjab",
+    "Uttar Pradesh",
+    "Bihar"
+]
 
-def user_input_features():
-    data = {}
-    for col in model_columns:
-        # Slider for numeric inputs; adjust range if needed
-        data[col] = st.sidebar.slider(col, 0, 100, 50)
-    return pd.DataFrame([data])
+crops = [
+    "Rice",
+    "Wheat",
+    "Maize",
+    "Cotton",
+    "Sugarcane",
+    "Barley"
+]
 
-input_df = user_input_features()
+selected_state = st.sidebar.selectbox("Select State", states)
+selected_crop = st.sidebar.selectbox("Select Crop", crops)
 
-st.subheader("📝 User Input Summary")
-st.dataframe(input_df)
+temperature = st.sidebar.number_input("Temperature", 0.0, 50.0, 25.0)
+rainfall = st.sidebar.number_input("Rainfall", 0.0, 500.0, 100.0)
+humidity = st.sidebar.number_input("Humidity", 0.0, 100.0, 50.0)
 
-# Display first two metrics dynamically (avoid KeyError)
-st.metric(f"{model_columns[0]}", input_df[model_columns[0]][0])
-if len(model_columns) > 1:
-    st.metric(f"{model_columns[1]}", input_df[model_columns[1]][0])
+# -----------------------------------
+# Prepare Input Data (AFTER loading model_columns)
+# -----------------------------------
 
-# ----------------------------
-# Make prediction
-# ----------------------------
-prediction = model.predict(input_df)
+# Create dataframe with exact training columns
+input_df = pd.DataFrame(columns=model_columns)
 
-# ----------------------------
-# Tabs for Prediction & Feature Importance
-# ----------------------------
-tab1, tab2 = st.tabs(["Prediction 🌟", "Feature Importance 📊"])
+# Add one row of zeros
+input_df.loc[0] = 0
 
-with tab1:
-    st.subheader("Predicted Crop Yield (tons/hectare)")
-    st.success(f"🌱 {prediction[0]:.2f} tons/hectare")
+# Fill numerical columns ONLY if they exist
+if "temperature" in input_df.columns:
+    input_df.at[0, "temperature"] = temperature
 
-with tab2:
-    st.subheader("Feature Importance")
-    importance = model.feature_importances_
-    fi_df = pd.DataFrame({"Feature": model_columns, "Importance": importance})
-    fi_df = fi_df.sort_values("Importance", ascending=False)
-    
-    fig = px.bar(
-        fi_df, x="Feature", y="Importance",
-        color="Importance", color_continuous_scale="Viridis",
-        title="🌟 Feature Importance of Input Parameters"
-    )
-    st.plotly_chart(fig, use_container_width=True)
+if "rainfall" in input_df.columns:
+    input_df.at[0, "rainfall"] = rainfall
 
-# ----------------------------
-# Footer / tip
-# ----------------------------
-st.markdown(
-    "<h5 style='color:green;'>💡 Tip: Adjust the sliders in the sidebar to see live prediction changes!</h5>",
-    unsafe_allow_html=True
-)
+if "humidity" in input_df.columns:
+    input_df.at[0, "humidity"] = humidity
+
+# One-hot encode state
+state_column = f"State_{selected_state}"
+if state_column in input_df.columns:
+    input_df.at[0, state_column] = 1
+
+# One-hot encode crop
+crop_column = f"Crop_{selected_crop}"
+if crop_column in input_df.columns:
+    input_df.at[0, crop_column] = 1
+
+# -----------------------------------
+# Prediction
+# -----------------------------------
+if st.button("🌱 Predict Yield"):
+
+    prediction = model.predict(input_df)[0]
+
+    st.subheader("📊 Prediction Result")
+    st.success(f"🌾 Estimated Yield: {round(prediction, 2)} tons/hectare")
+
+# -----------------------------------
+# Show Selected Inputs
+# -----------------------------------
+st.subheader("📋 Selected Inputs")
+st.write(f"State: {selected_state}")
+st.write(f"Crop: {selected_crop}")
+st.write(f"Temperature: {temperature}")
+st.write(f"Rainfall: {rainfall}")
+st.write(f"Humidity: {humidity}")
